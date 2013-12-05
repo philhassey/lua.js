@@ -214,7 +214,7 @@ chunk
 prefixexp
   : var {
     if ($1.access) {
-      $$ = {single: "lua_tableget(" + $1.prefixexp + ", " + $1.access + ")", single_tableget: $1};
+      $$ = {single: parse_lua_tableget($1.prefixexp,$1.access), single_tableget: $1};
     } else {
       $$ = {single: $1.prefixexp};
     }
@@ -222,7 +222,7 @@ prefixexp
   | functioncall { $$ = {single: $1 + "[0]", endmulti: $1}; }
   | "(" exp ")" { $$ = {single: "(" + $2.single + ")", simple_form: $2.simple_form}; }
   ;
-
+  
 statlist
   : stat semi statlist {
     if ($3.simple_form) {
@@ -244,13 +244,13 @@ stat
       // avoid tmp entirely for certain situations
       if ($3.exps.length == 1) {
         if ($1[0].access) {
-          tmp = "lua_tableset(" + $1[0].prefixexp + ", " + $1[0].access + ", " + $3.exps[0] + ");";
+          tmp = parse_lua_tableset($1[0].prefixexp,$1[0].access,$3.exps[0])+";";
         } else {
           tmp = $1[0].prefixexp + " = " + $3.exps[0] + ";";
         }
       } else {
         if ($1[0].access) {
-          tmp = "lua_tableset(" + $1[0].prefixexp + ", " + $1[0].access + ", " + getTempDecl($3) + "[0]);";
+          tmp = parse_lua_tableset($1[0].prefixexp,$1[0].access,getTempDecl($3)+"[0]")+";";
         } else {
           tmp = $1[0].prefixexp + " = " + getTempDecl($3) + "[0];";
         }
@@ -259,7 +259,7 @@ stat
       tmp = "tmp = " + getTempDecl($3) + "; ";
       for (var i = 0; i < $1.length; i++) {
         if ($1[i].access) {
-          tmp += "lua_tableset(" + $1[i].prefixexp + ", " + $1[i].access + ", tmp[" + i + "]); ";
+          tmp += parse_lua_tableset($1[i].prefixexp,$1[i].access,"tmp[" + i + "]")+";";
         } else {
           tmp += $1[i].prefixexp + " = tmp[" + i + "]; ";
         }
@@ -385,9 +385,9 @@ stat
     var tmp = getLocal($2[0], "G.str['" + $2[0] + "']");
     if ($2.length > 1) {
       for (var i = 1; i < $2.length - 1; i++) {
-        tmp = "lua_tableget(" + tmp + ", '" + $2[i] + "')";
+        tmp = parse_lua_tableget(tmp,"'" + $2[i] + "'");
       }
-      $$ = {simple_form: "lua_tableset(" + tmp + ", '" + $2[i] + "', " + $3 + ")"};
+      $$ = {simple_form: parse_lua_tableset(tmp,"'" + $2[i] + "'",$3)};
     } else {
       $$ = {simple_form: tmp + " = " + $3};
     }
@@ -395,9 +395,9 @@ stat
   | FUNCTION funcname ":" NAME mfuncbody {
     var tmp = getLocal($2[0], "G.str['" + $2[0] + "']");
     for (var i = 1; i < $2.length; i++) {
-      tmp = "lua_tableget(" + tmp + ", '" + $2[i] + "')";
+      tmp = parse_lua_tableget(tmp,"'" + $2[i] + "'");
     }
-    $$ = {simple_form: "lua_tableset(" + tmp + ", '" + $4 + "', " + $5 + ")"};
+    $$ = {simple_form: parse_lua_tableset(tmp, "'" + $4 + "'",$5)};
   }
   | LOCAL FUNCTION name_setlocals funcbody {
     $$ = {simple_form: "var " + $3 + " = " + $4 + ";"};
@@ -413,7 +413,7 @@ laststat
   }
   | RETURN {
     $$ = {
-      simple_form: "return [];",
+      simple_form: "return null;",
       varfix_form: "throw new ReturnValues();"
     };
   }
@@ -507,73 +507,73 @@ exp
     if ($1.is_number && $3.is_number) {
       $$ = {single: '(' + $1.single + ' + ' + $3.single + ')', is_number: true};
     } else {
-      $$ = {single: 'lua_add(' + $1.single + ', ' + $3.single + ')'};
+      $$ = {single: '((' + $1.single + ')+(' + $3.single + '))'};
     }
   }
   | exp "-" exp {
     if ($1.is_number && $3.is_number) {
       $$ = {single: '(' + $1.single + ' - ' + $3.single + ')', is_number: true};
     } else {
-      $$ = {single: 'lua_subtract(' + $1.single + ', ' + $3.single + ')'};
+      $$ = {single: '((' + $1.single + ')-(' + $3.single + '))'};
     }
   }
   | exp "*" exp {
     if ($1.is_number && $3.is_number) {
       $$ = {single: '(' + $1.single + ' * ' + $3.single + ')', is_number: true};
     } else {
-      $$ = {single: 'lua_multiply(' + $1.single + ', ' + $3.single + ')'};
+      $$ = {single: '((' + $1.single + ')*(' + $3.single + '))'};
     }
   }
   | exp "/" exp {
     if ($1.is_number && $3.is_number) {
       $$ = {single: '(' + $1.single + ' / ' + $3.single + ')', is_number: true};
     } else {
-      $$ = {single: 'lua_divide(' + $1.single + ', ' + $3.single + ')'};
+      $$ = {single: '((' + $1.single + ')/(' + $3.single + '))'};
     }
   }
   | exp "^" exp {
     if ($1.is_number && $3.is_number) {
       $$ = {single: 'Math.pow(' + $1.single + ', ' + $3.single + ')', is_number: true};
     } else {
-      $$ = {single: 'lua_power(' + $1.single + ', ' + $3.single + ')'};
+      $$ = {single: 'Math.pow((' + $1.single + '),(' + $3.single + '))'};
     }
   }
-  | exp "%" exp { $$ = {single: 'lua_mod(' + $1.single + ', ' + $3.single + ')'}; }
+  | exp "%" exp { $$ = {single: '((' + $1.single + ')%(' + $3.single + '))'}; }
   | exp ".." exp { $$ = {single: 'lua_concat(' + $1.single + ', ' + $3.single + ')'}; }
   | exp "<" exp {
     $$ = {
-      single: 'lua_lt(' + $1.single + ', ' + $3.single + ')',
-      simple_form: 'lua_lt(' + $1.single + ', ' + $3.single + ')'
+      single: '((' + $1.single + ')<(' + $3.single + '))',
+      simple_form: '((' + $1.single + ')<(' + $3.single + '))'
     };
   }
   | exp ">" exp {
     $$ = {
-      single: 'lua_lt(' + $3.single + ', ' + $1.single + ')',
-      simple_form: 'lua_lt(' + $3.single + ', ' + $1.single + ')'
+      single: '((' + $3.single + ')<(' + $1.single + '))',
+      simple_form: '((' + $3.single + ')<(' + $1.single + '))'
     };
   }
   | exp "<=" exp {
     $$ = {
-      single: 'lua_lte(' + $1.single + ', ' + $3.single + ')',
-      simple_form: 'lua_lte(' + $1.single + ', ' + $3.single + ')'
+      single: '((' + $1.single + ')<=(' + $3.single + '))',
+      simple_form: '((' + $1.single + ')<=(' + $3.single + '))'
     };
   }
   | exp ">=" exp {
     $$ = {
-      single: 'lua_lte(' + $3.single + ', ' + $1.single + ')',
-      simple_form: 'lua_lte(' + $3.single + ', ' + $1.single + ')'
+      single: '((' + $3.single + ')<=(' + $1.single + '))',
+      simple_form: '((' + $3.single + ')<=(' + $1.single + '))'
     };
   }
   | exp "==" exp {
     $$ = {
-      single: 'lua_eq(' + $1.single + ', ' + $3.single + ')',
-      simple_form: 'lua_eq(' + $1.single + ', ' + $3.single + ')'
+      single: '(' + $1.single + '== ' + $3.single + ')',
+      simple_form: '(' + $1.single + '== ' + $3.single + ')'
     };
   }
   | exp "~=" exp {
     $$ = {
-      single: '!lua_eq(' + $1.single + ', ' + $3.single + ')',
-      simple_form: '!lua_eq(' + $1.single + ', ' + $3.single + ')'
+      single: '!(' + $1.single + '== ' + $3.single + ')',
+      simple_form: '!(' + $1.single + '== ' + $3.single + ')'
     };
   }
   | exp AND exp {
@@ -588,7 +588,7 @@ exp
       simple_form: '(' + getIfExp($1) + ' || ' + getIfExp($3) + ')'
     };
   }
-  | "-" exp { $$ = {single: $2.is_number ? ('-' + $2.single) : ('lua_unm(' + $2.single + ')'), is_number: $2.is_number}; }
+  | "-" exp { $$ = {single: $2.is_number ? ('-' + $2.single) : ('(-(' + $2.single + '))'), is_number: $2.is_number}; }
   | NOT exp {
     $$ = {
       single: 'lua_not(' + $2.single + ')',
@@ -738,7 +738,7 @@ function createFunction(args, body, hasVarargs) {
   }
   return result +
     body.simple_form + "\n" +
-    "  return [];\n" +
+    "  return null;\n" +
     "})";
 }
 
@@ -757,4 +757,18 @@ function autoAssertFloat(possibleNumber) {
 function autoFunctionBlock(loopblock) {
   return loopblock.use_function_block ?
     "(function() {\n" + loopblock.block + "\n})();" : "{\n" + loopblock.block + "\n}";
+}
+
+function parse_lua_tableget(table,key) {
+    if (key[0] == "'") {
+        return "("+table+".str["+key+"])"; // NOTE: unsafe, but fast!
+    }
+    return "lua_tableget("+table+","+key+")";
+}
+
+function parse_lua_tableset(table,key,value) {
+    if (key[0] == "'") {
+        return "("+table+".str["+key+"]=("+value+"));"; // NOTE: unsafe, but fast!
+    }
+    return "lua_tableset("+table+","+key+","+value+")";
 }

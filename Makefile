@@ -15,7 +15,7 @@ node_modules/jison:
 	npm install jison
 
 closurecompiler/compiler.jar:
-	wget http://closure-compiler.googlecode.com/files/compiler-latest.zip
+	wget http://dl.google.com/closure-compiler/compiler-latest.zip
 	mkdir -p closurecompiler
 	unzip -o compiler-latest.zip -d closurecompiler
 	rm -f compiler-latest.zip

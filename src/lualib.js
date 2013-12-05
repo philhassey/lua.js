@@ -1069,6 +1069,7 @@ lua_libs["string"] = {
     not_supported();
   },
   "format": function (formatstring) {
+    if (vsprintf) { return [vsprintf(formatstring,slice(arguments,1))]; }
     // TODO: Finish implementation
     return ["[" + slice(arguments, 1).join(", ") + "]" + arguments[0]];
   },
