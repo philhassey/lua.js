@@ -28,29 +28,48 @@ function not_supported() {
   throw new Error("Not supported");
 }
 
-function ensure_arraymode(table) {
-  if (!table.arraymode) {
-    var newuints = [];
-    for (var i in table.uints) {
-      if (table.uints[i] != null) {
-        newuints[i - 1] = table.uints[i];
-      }
-    }
-    table.uints = newuints;
-    table.arraymode = true;
-  }
+function print_stack() {
+    var e = new Error('dummy');
+    var stack = e.stack.replace(/^[^\(]+?[\n$]/gm, '')
+        .replace(/^\s+at\s+/gm, '')
+        .replace(/^Object.<anonymous>\s*\(/gm, '{anonymous}()@')
+        .split('\n');
+    for (line in stack) { console.log(stack[line]); }
+    console.log("");
 }
-function ensure_notarraymode(table) {
-  if (table.arraymode) {
-    var newuints = {};
-    for (var i in table.uints) {
-      if (table.uints[i] != null) {
-        newuints[i - -1] = table.uints[i];
+
+function get_array(_table) {
+//     console.log("get_array")
+//     print_stack();
+    var newuints = [];
+    var dict = _table; //.uints
+    var length = 0
+    for (var i in dict) {
+      if (parseInt(i) > 0 && dict[i] != null) {
+        newuints.push(dict[i]);
+        length += 1;
       }
     }
-    table.uints = newuints;
-    delete table.arraymode;
-  }
+    _table.$length = length;
+    return newuints;
+}
+    
+function set_array(_table,arr) {
+//     console.log("set_array")
+//     print_stack();
+    var dict = _table;//.uints
+    for (var i in dict) {
+        if (parseInt(i) > 0) {
+            delete dict[i];
+        }
+    }
+    
+    for (var i in arr) {
+        var n = parseInt(i);
+        dict[n+1] = arr[i];
+//         console.log('set_array',n+1,arr[i]);
+    }
+    _table.$length = arr.length;
 }
 
 function check_string(s) {
@@ -90,7 +109,7 @@ function lua_assertfloat(n) {
   return result;
 }
 function lua_newtable(autoIndexList) {
-  var result = {str: {}, uints: {}, floats: {}, bool: {}, objs: []};
+  var result = {  } ; //, bool: {}, objs: []};
   for (var i = 1; i < arguments.length - 1; i += 2) {
     var value = arguments[i + 1];
     if (value == null) {
@@ -99,16 +118,16 @@ function lua_newtable(autoIndexList) {
     var key = arguments[i];
     switch (typeof key) {
       case "string":
-        result.str[key] = value;
+        result[key] = value;
         break;
       case "number":
         if (key != key) {
           throw new Error("Table index is NaN");
         }
         if (key > 0 && (key | 0) == key) {
-          result.uints[key] = value;
+          result[key] = value;
         } else {
-          result.floats[key] = value;
+          result[key] = value;
         }
         break;
       case "boolean":
@@ -141,15 +160,7 @@ function lua_newtable(autoIndexList) {
     }
   }
   if (autoIndexList) {
-    ensure_arraymode(result);
-    if (result.uints.length == 0) {
-      result.uints = autoIndexList;
-    } else {
-      i = autoIndexList.length;
-      while (i-- > 0) {
-        result.uints[i] = autoIndexList[i];
-      }
-    }
+      set_array(result,autoIndexList);
   }
   return result;
 }
@@ -158,26 +169,26 @@ function lua_newtable2(str) {
   for (var i in str) {
     str_copy[i] = str[i];
   }
-  return {str: str_copy, uints: {}, floats: {}, bool: {}, objs: {}};
+//   return {str: str_copy, uints: {}, floats: {}, bool: {}, objs: {}};
+//     str_copy.uints = {}
+//     str_copy.floats = {}
+//     str_copy.bool = {}
+//     str_copy.objs = {}
+    return str_copy
 }
 function lua_len(op) {
   if (typeof op == "string") {
     return op.length;
   } else if (typeof op == "object" && op != null) {
-    if (op.length == null) {
+    if (op.$length == null) {
       var index = 0;
-      if (op.arraymode) {
-        while (op.uints[index++] != null) {};
-        return op.length = index - 1;
-      } else {
-        while (op.uints[++index] != null) {};
-        return op.length = index - 1;
-      }
+        while (op[++index] != null) {};
+        return op.$length = index - 1;
     } else {
-      return op.length;
+      return op.$length;
     }
   } else {
-    var h = op.metatable && op.metatable.str["__len"];
+    var h = op.$metatable && op.$metatable["__len"];
     if (h) {
       return lua_rawcall(h, [op])[0];
     } else {
@@ -208,7 +219,7 @@ function lua_tablegetcall(table, key, args) {
     if (func == null) {
       throw new Error("attempt to call field '" + key + "' (a nil value)");
     }
-    var h = func.metatable && func.metatable.str["__call"];
+    var h = func.$metatable && func.$metatable["__call"];
     if (h != null) {
       return lua_rawcall(h, [func].concat(args));
     } else {
@@ -223,7 +234,7 @@ function lua_call(func, args) {
     if (func == null) {
       throw new Error("attempt to call function (a nil value)");
     }
-    var h = func.metatable && func.metatable.str["__call"];
+    var h = func.$metatable && func.$metatable["__call"];
     if (h != null) {
       return lua_rawcall(h, [func].concat(args));
     } else {
@@ -251,8 +262,8 @@ function lua_eq(op1, op2) {
   if (op1 == null || op2 == null) {
     return false;
   }
-  var h = op1.metatable && op1.metatable.str["__eq"];
-  if (h && h == (op2.metatable && op2.metatable.str["__eq"])) {
+  var h = op1.$metatable && op1.$metatable["__eq"];
+  if (h && h == (op2.$metatable && op2.$metatable["__eq"])) {
     return lua_true(lua_rawcall(h, [op1, op2])[0]);
   } else {
     return false;
@@ -265,8 +276,8 @@ function lua_lt(op1, op2) {
     // TODO: not sure how similar lua/javascript string comparison is
     return op1 < op2;
   } else {
-    var h = op1.metatable && op1.metatable.str["__lt"];
-    if (h && h == (op2.metatable && op2.metatable.str["__lt"])) {
+    var h = op1.$metatable && op1.$metatable["__lt"];
+    if (h && h == (op2.$metatable && op2.$metatable["__lt"])) {
       return lua_true(lua_rawcall(h, [op1, op2])[0]);
     } else {
       throw new Error("Unable to compare " + op1 + " and " + op2);
@@ -280,12 +291,12 @@ function lua_lte(op1, op2) {
     // TODO: not sure how similar lua/javascript string comparison is
     return op1 <= op2;
   } else {
-    var h = op1.metatable && op1.metatable.str["__le"];
-    if (h && h == (op2.metatable && op2.metatable.str["__le"])) {
+    var h = op1.$metatable && op1.$metatable["__le"];
+    if (h && h == (op2.$metatable && op2.$metatable["__le"])) {
       return lua_true(lua_rawcall(h, [op1, op2])[0]);
     } else {
-      var h = op1.metatable && op1.metatable.str["__lt"];
-      if (h && h == (op2.metatable && op2.metatable.str["__lt"])) {
+      var h = op1.$metatable && op1.$metatable["__lt"];
+      if (h && h == (op2.$metatable && op2.$metatable["__lt"])) {
         return lua_not(lua_rawcall(h, [op2, op1])[0]);
       } else {
         throw new Error("Unable to compare " + op1 + " and " + op2);
@@ -298,7 +309,7 @@ function lua_unm(op) {
   if (!isNaN(o)) {
     return -o;
   } else {
-    var h = op.metatable && op.metatable.str["__unm"];
+    var h = op.$metatable && op.$metatable["__unm"];
     if (h) {
       return lua_rawcall(h, [op])[0];
     } else {
@@ -309,7 +320,7 @@ function lua_unm(op) {
 function lua_add(op1, op2) {
   var o1 = parseFloat(op1), o2 = parseFloat(op2);
   if (isNaN(o1) || isNaN(o2)) {
-    var h = (op1.metatable && op1.metatable.str["__add"]) || (op2.metatable && op2.metatable.str["__add"]);
+    var h = (op1.$metatable && op1.$metatable["__add"]) || (op2.$metatable && op2.$metatable["__add"]);
     if (h) {
       return lua_rawcall(h, [op1, op2])[0];
     } else {
@@ -322,7 +333,7 @@ function lua_add(op1, op2) {
 function lua_subtract(op1, op2) {
   var o1 = parseFloat(op1), o2 = parseFloat(op2);
   if (isNaN(o1) || isNaN(o2)) {
-    var h = (op1.metatable && op1.metatable.str["__sub"]) || (op2.metatable && op2.metatable.str["__sub"]);
+    var h = (op1.$metatable && op1.$metatable["__sub"]) || (op2.$metatable && op2.$metatable["__sub"]);
     if (h) {
       return lua_rawcall(h, [op1, op2])[0];
     } else {
@@ -335,7 +346,7 @@ function lua_subtract(op1, op2) {
 function lua_divide(op1, op2) {
   var o1 = parseFloat(op1), o2 = parseFloat(op2);
   if (isNaN(o1) || isNaN(o2)) {
-    var h = (op1.metatable && op1.metatable.str["__div"]) || (op2.metatable && op2.metatable.str["__div"]);
+    var h = (op1.$metatable && op1.$metatable["__div"]) || (op2.$metatable && op2.$metatable["__div"]);
     if (h) {
       return lua_rawcall(h, [op1, op2])[0];
     } else {
@@ -348,7 +359,7 @@ function lua_divide(op1, op2) {
 function lua_multiply(op1, op2) {
   var o1 = parseFloat(op1), o2 = parseFloat(op2);
   if (isNaN(o1) || isNaN(o2)) {
-    var h = (op1.metatable && op1.metatable.str["__mul"]) || (op2.metatable && op2.metatable.str["__mul"]);
+    var h = (op1.$metatable && op1.$metatable["__mul"]) || (op2.$metatable && op2.$metatable["__mul"]);
     if (h) {
       return lua_rawcall(h, [op1, op2])[0];
     } else {
@@ -361,7 +372,7 @@ function lua_multiply(op1, op2) {
 function lua_power(op1, op2) {
   var o1 = parseFloat(op1), o2 = parseFloat(op2);
   if (isNaN(o1) || isNaN(o2)) {
-    var h = (op1.metatable && op1.metatable.str["__pow"]) || (op2.metatable && op2.metatable.str["__pow"]);
+    var h = (op1.$metatable && op1.$metatable["__pow"]) || (op2.$metatable && op2.$metatable["__pow"]);
     if (h) {
       return lua_rawcall(h, [op1, op2])[0];
     } else {
@@ -374,7 +385,7 @@ function lua_power(op1, op2) {
 function lua_mod(op1, op2) {
   var o1 = parseFloat(op1), o2 = parseFloat(op2);
   if (isNaN(o1) || isNaN(o2)) {
-    var h = (op1.metatable && op1.metatable.str["__mod"]) || (op2.metatable && op2.metatable.str["__mod"]);
+    var h = (op1.$metatable && op1.$metatable["__mod"]) || (op2.$metatable && op2.$metatable["__mod"]);
     if (h) {
       return lua_rawcall(h, [op1, op2])[0];
     } else {
@@ -396,22 +407,23 @@ function lua_mod(op1, op2) {
     }
   }
 }
+
 function lua_rawget(table, key) {
+    return table[key];
+}
+
+function x_lua_rawget(table, key) {
   switch (typeof key) {
     case "string":
-      return table.str[key];
+      return table[key];
     case "number":
       if (key != key) {
         throw new Error("Table index is NaN");
       }
       if (key > 0 && (key | 0) == key) {
-        if (table.arraymode) {
-          return table.uints[key - 1];
-        } else {
-          return table.uints[key];
-        }
+          return table[key];
       } else {
-        return table.floats[key];
+        return table[key];
       }
     case "boolean":
       return table.bool[key];
@@ -424,19 +436,29 @@ function lua_rawget(table, key) {
           return table.objs[i][1];
         }
       }
-	break;
+    break;
     default:
       throw new Error("Unsupported key for table: " + (typeof key));
   }
 }
 function lua_rawset(table, key, value) {
-  delete table.length;
+    delete table.$length;
+    if (value == null) {
+        delete table[key];
+    } else {
+        table[key] = value;
+    }
+}
+
+function x_lua_rawset(table, key, value) {
+  delete table.$length;
+  
   switch (typeof key) {
     case "string":
       if (value == null) {
-        delete table.str[key];
+        delete table[key];
       } else {
-        table.str[key] = value;
+        table[key] = value;
       }
       break;
     case "number":
@@ -444,17 +466,16 @@ function lua_rawset(table, key, value) {
         throw new Error("Table index is NaN");
       }
       if (key > 0 && (key | 0) == key) {
-        ensure_notarraymode(table);
         if (value == null) {
-          delete table.uints[key];
+          delete table[key];
         } else {
-          table.uints[key] = value;
+          table[key] = value;
         }
       } else {
         if (value == null) {
-          delete table.floats[key];
+          delete table[key];
         } else {
-          table.floats[key] = value;
+          table[key] = value;
         }
       }
       break;
@@ -498,12 +519,12 @@ function lua_tableget(table, key) {
     if (v != null) {
       return v;
     }
-    var h = table.metatable && table.metatable.str["__index"];
+    var h = table.$metatable && table.$metatable["__index"];
     if (h == null) {
       return null;
     }
   } else {
-    var h = table.metatable && table.metatable.str["__index"];
+    var h = table.$metatable && table.$metatable["__index"];
     if (h == null) {
       throw new Error("Unable to index key " + key + " from " + table);
     }
@@ -524,13 +545,13 @@ function lua_tableset(table, key, value) {
       lua_rawset(table, key, value);
       return;
     }
-    var h = table.metatable && table.metatable.str["__newindex"];
+    var h = table.$metatable && table.$metatable["__newindex"];
     if (h == null) {
       lua_rawset(table, key, value);
       return;
     }
   } else {
-    var h = table.metatable && table.metatable.str["__newindex"];
+    var h = table.$metatable && table.$metatable["__newindex"];
     if (h == null) {
       throw new Error("Unable to set key " + key + " in table " + table);
     }
@@ -547,7 +568,7 @@ function lua_concat(op1, op2) {
   } else if ((typeof op1 == "string" || typeof op1 == "number") && (typeof op2 == "string" || typeof op2 == "number")) {
     return op1 + op2;
   } else {
-    var h = (op1.metatable && op1.metatable.str["__concat"]) || (op2.metatable && op2.metatable.str["__concat"]);
+    var h = (op1.$metatable && op1.$metatable["__concat"]) || (op2.$metatable && op2.$metatable["__concat"]);
     if (h) {
       return lua_rawcall(h, [op1, op2])[0];
     } else {
@@ -559,11 +580,7 @@ function lua_concat(op1, op2) {
 // core lua functions
 function _ipairs_next(table, index) {
   var entry;
-  if (table.arraymode) {
-    entry = table.uints[index];
-  } else {
-    entry = table.uints[index + 1];
-  }
+    entry = table[index + 1];
   if (entry == null) {
     return [null, null];
   }
@@ -593,7 +610,7 @@ var lua_core = {
     not_supported();
   },
   "getmetatable": function (op) {
-    return [op.metatable && (op.metatable.str["__metatable"] || op.metatable)];
+    return [op.$metatable && (op.$metatable["__metatable"] || op.$metatable)];
   },
   "ipairs": function (table) {
     return [_ipairs_next, table, 0];
@@ -624,30 +641,21 @@ var lua_core = {
   },
   "pairs": function (table) {
     var props = [], i;
-    for (i in table.str) {
+    for (i in table) {
       props.push(i);
     }
-    if (table.arraymode) {
-      var j = table.uints.length;
-      while (j-- > 0) {
-        if (table.uints[j] != null) {
-          props.push(j + 1);
-        }
-      }
-    } else {
-      for (i in table.uints) {
-        props.push(parseFloat(i));
-      }
-    }
-    for (i in table.floats) {
-      props.push(parseFloat(i));
-    }
-    for (i in table.bool) {
-      props.push(i === "true" ? true : false);
-    }
-    for (i in table.objs) {
-      props.push(table.objs[i][0]);
-    }
+//       for (i in table.uints) {
+//         props.push(parseFloat(i));
+//       }
+//     for (i in table.floats) {
+//       props.push(parseFloat(i));
+//     }
+//     for (i in table.bool) {
+//       props.push(i === "true" ? true : false);
+//     }
+//     for (i in table.objs) {
+//       props.push(table.objs[i][0]);
+//     }
 
     // okay, so I'm faking it here
     // regardless of what key is given, this function will return the next value
@@ -709,9 +717,9 @@ var lua_core = {
       throw new Error("table expected, got " + table);
     }
     if (metatable == null) {
-      delete table.metatable;
+      delete table.$metatable;
     } else if (typeof metatable === "object") {
-      table.metatable = metatable;
+      table.$metatable = metatable;
     } else {
       throw new Error("table or nil expected, got " + metatable);
     }
@@ -731,7 +739,7 @@ var lua_core = {
     if (e == null) {
       return ["nil"];
     }
-    var h = e.metatable && e.metatable.str["__tostring"];
+    var h = e.$metatable && e.$metatable["__tostring"];
     if (h) {
       return lua_rawcall(h, [e]);
     } else {
@@ -769,12 +777,12 @@ var lua_core = {
     }
   },
   "unpack": function (list, i, j) {
-    ensure_arraymode(list);
+      var arr = get_array(list);
     if (list.length != null) {
       j = list.length;
     } else {
       j = 0;
-      while (list.uints[j++] != null) {};
+      while (arr[j++] != null) {};
       list.length = --j;
     }
 
@@ -784,7 +792,7 @@ var lua_core = {
     if (j == null) {
       j = list.length;
     }
-    throw new ReturnValues(list.uints.slice(i - 1, j));
+    throw new ReturnValues(arr.slice(i - 1, j));
   },
   "_VERSION": "Lua 5.1",
   "xpcall": function () {
@@ -801,7 +809,7 @@ _lua_coroutine["resume"] = _lua_coroutine["running"] = _lua_coroutine["status"] 
 // debug
 var _lua_debug = lua_libs["debug"] = {
   "getmetatable": function (obj) {
-    return [obj.metatable];
+    return [obj.$metatable];
   }
 };
 _lua_debug["traceback"] = _lua_debug["getfenv"] = _lua_debug["gethook"] = _lua_debug["getinfo"] = _lua_debug["getlocal"] = _lua_debug["getregistry"] = _lua_debug["getupvalue"] = _lua_debug["setfenv"] = _lua_debug["sethook"] = _lua_debug["setlocal"] = _lua_debug["setupvalue"] = _lua_debug["debug"] = function () {
@@ -1136,74 +1144,67 @@ String.prototype["metatable"] = lua_newtable(null, "__index", lua_newtable2(lua_
 // table
 lua_libs["table"] = {
   "concat": function (table, sep, i, j) {
-    ensure_arraymode(table);
+    var arr = get_array(table);
     if (sep == null) {
       sep = "";
     }
     if (i != null) {
       if (j == null) {
-        j = table.uints.length;
+        j = arr.length;
       }
-      return [table.uints.slice(i - 1, j).join(sep)];
+      return [arr.slice(i - 1, j).join(sep)];
     } else {
-      return [table.uints.join(sep)];
+      return [arr.join(sep)];
     }
   },
   "insert": function (table, pos, value) {
-    ensure_arraymode(table);
+    var arr = get_array(table);
     if (arguments.length == 2) {
       value = pos;
-      pos = table.uints.length + 1;
+      pos = arr.length + 1;
     }
-    table.uints.splice(pos - 1, 0, value);
-    if (table.length != null) {
-      table.length++;
-    }
+    arr.splice(pos - 1, 0, value);
+    set_array(table,arr);
     return [];
   },
   "maxn": function (table) {
-    if (table.arraymode) {
-      return [table.uints.length];
-    } else {
       var max = 0;
-      for (var i in table.uints) {
+      for (var i in table) {
         var val = parseFloat(i);
         if (val > max) {
           max = val;
         }
       }
       return [max];
-    }
   },
   "remove": function (table, pos) {
-    ensure_arraymode(table);
+      var arr = get_array(table);
     if (pos == null) {
-      pos = table.uints.length;
+      pos = arr.length;
     } else {
       pos = lua_assertfloat(pos);
     }
-    if (table.uints.length) {
-      var value = table.uints[pos - 1];
-      table.uints.splice(pos - 1, 1);
-      if (table.length != null) {
-        table.length--;
-      }
+    if (arr.length) {
+      var value = arr[pos - 1];
+      arr.splice(pos - 1, 1);
+      set_array(table,arr);
       return [value];
     } else {
       return [];
     }
   },
   "sort": function (table, comp) {
-    ensure_arraymode(table)
+      var arr = get_array(table);
     if (comp) {
-      table.uints.sort(function (a, b) {
+      arr.sort(function (a, b) {
         return comp(a, b)[0] ? -1 : 1;
       });
     } else {
-      table.uints.sort(function (a, b) {
+      arr.sort(function (a, b) {
         return lua_lt(a, b) ? -1 : 1;
       });
     }
+    set_array(table,arr);
     return [];
   }
 };

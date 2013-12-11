@@ -99,21 +99,21 @@ script
     return "var tmp;\n" +
       "var G = lua_newtable2(lua_core);\n" +
       "for (var i in lua_libs) {\n" +
-      "  G.str[i] = lua_newtable2(lua_libs[i]);\n" +
+      "  G"+parse_str()+"[i] = lua_newtable2(lua_libs[i]);\n" +
       "}\n" +
-      "G.str['arg'] = lua_newtable();\n" +
-      "G.str['_G'] = G;\n" +
-      "G.str['module'] = function (name) {\n" +
+      "G"+parse_str()+"['arg'] = lua_newtable();\n" +
+      "G"+parse_str()+"['_G'] = G;\n" +
+      "G"+parse_str()+"['module'] = function (name) {\n" +
       "  lua_createmodule(G, name, slice(arguments, 1));\n" +
       "};\n" +
-      "G.str['require'] = function (name) {\n" +
+      "G"+parse_str()+"['require'] = function (name) {\n" +
       "  lua_require(G, name);\n" +
       "};\n" +
-      "G.str['package'].str['seeall'] = function (module) {\n" +
+      "G"+parse_str()+"['package']"+parse_str()+"['seeall'] = function (module) {\n" +
       "  if (!module.metatable) {\n" +
       "    module.metatable = lua_newtable();\n" +
       "  }\n" +
-      "  module.metatable.str['__index'] = G;\n" +
+      "  module.metatable"+parse_str()+"['__index'] = G;\n" +
       "};\n" +
       "{\n" +
       $2.simple_form + "\n" +
@@ -382,7 +382,7 @@ stat
     $$ = {simple_form: tmp};
   }
   | FUNCTION funcname funcbody {
-    var tmp = getLocal($2[0], "G.str['" + $2[0] + "']");
+    var tmp = getLocal($2[0], "G"+parse_str()+"['" + $2[0] + "']");
     if ($2.length > 1) {
       for (var i = 1; i < $2.length - 1; i++) {
         tmp = parse_lua_tableget(tmp,"'" + $2[i] + "'");
@@ -393,7 +393,7 @@ stat
     }
   }
   | FUNCTION funcname ":" NAME mfuncbody {
-    var tmp = getLocal($2[0], "G.str['" + $2[0] + "']");
+    var tmp = getLocal($2[0], "G"+parse_str()+"['" + $2[0] + "']");
     for (var i = 1; i < $2.length; i++) {
       tmp = parse_lua_tableget(tmp,"'" + $2[i] + "'");
     }
@@ -631,7 +631,7 @@ addself
   ;
 
 var
-  : NAME { $$ = {prefixexp: getLocal($1, "G.str['" + $1 + "']")}; }
+  : NAME { $$ = {prefixexp: getLocal($1, "G"+parse_str()+"['" + $1 + "']")}; }
   | prefixexp "[" exp "]" { $$ = {prefixexp: $1.single, access: $3.single}; }
   | prefixexp "." NAME { $$ = {prefixexp: $1.single, access: "'" + $3 + "'"}; }
   ;
@@ -760,15 +760,24 @@ function autoFunctionBlock(loopblock) {
 }
 
 function parse_lua_tableget(table,key) {
+    return "("+table+""+parse_str()+"["+key+"])";
+/*
     if (key[0] == "'") {
-        return "("+table+".str["+key+"])"; // NOTE: unsafe, but fast!
+        return "("+table+""+parse_str()+"["+key+"])"; // NOTE: unsafe, but fast!
     }
-    return "lua_tableget("+table+","+key+")";
+//     return "lua_tableget("+table+","+key+")";
+    return "lua_rawget("+table+","+key+")";
+*/
 }
 
 function parse_lua_tableset(table,key,value) {
     if (key[0] == "'") {
-        return "("+table+".str["+key+"]=("+value+"));"; // NOTE: unsafe, but fast!
+        return "("+table+""+parse_str()+"["+key+"]=("+value+"));"; // NOTE: unsafe, but fast!
     }
-    return "lua_tableset("+table+","+key+","+value+")";
+//     return "lua_tableset("+table+","+key+","+value+")";
+    return "lua_rawset("+table+","+key+","+value+")";
+}
+
+function parse_str() {
+    return ""; // return ".str"
 }

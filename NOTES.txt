@@ -1,0 +1,15 @@
+- I added string.format 
+
+Gained 84% performance by making the following assumptions: 
+
+- Meta-methods (__index and __call) will only work for calls / methods.
+
+- Math meta-methods (__add, __sub, etc) are all disabled.
+
+- Use ipairs() to iterate through lists, not pairs()
+
+- Your tables will contain .$metatable, if used.
+
+- Your tables will contain .$length, sometimes.
+
+Heavy use of table.insert / table.remove will result in a performance hit.
