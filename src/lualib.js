@@ -442,7 +442,10 @@ function x_lua_rawget(table, key) {
   }
 }
 function lua_rawset(table, key, value) {
-    delete table.$length;
+    if (typeof(key) == "number") {
+        if (table.$length == null) { table.$length = 0; }
+        table.$length += ((value != null) - (table[key] != null));
+    }
     if (value == null) {
         delete table[key];
     } else {
