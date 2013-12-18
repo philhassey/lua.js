@@ -12,4 +12,6 @@ Gained 84% performance by making the following assumptions:
 
 - Your tables will contain .$length, sometimes.
 
+- String library is not available as methods to string objects.
+
 Heavy use of table.insert / table.remove will result in a performance hit.
