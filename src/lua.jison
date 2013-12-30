@@ -389,7 +389,7 @@ stat
       }
       $$ = {simple_form: parse_lua_tableset(tmp,"'" + $2[i] + "'",$3)};
     } else {
-      $$ = {simple_form: tmp + " = " + $3};
+      $$ = {simple_form: tmp + " = " + $3 + ";"};
     }
   }
   | FUNCTION funcname ":" NAME mfuncbody {

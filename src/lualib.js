@@ -159,7 +159,7 @@ function lua_newtable(autoIndexList) {
         throw new Error("Unsupported type for table: " + (typeof key));
     }
   }
-  if (autoIndexList) {
+  if (autoIndexList && autoIndexList.length > 0) {
       set_array(result,autoIndexList);
   }
   return result;
@@ -947,7 +947,7 @@ lua_libs["math"] = {
     if (arguments.length >= 2) {
       m = m | 0;
       n = n | 0;
-      if (m >= n) {
+      if (m > n) {
         throw new Error("Invalid range");
       }
       return [Math.floor(val * (n - m + 1) + m)];
